@@ -31,7 +31,7 @@ export default function MainLayout() {
           {AGENTS.map(a => (
             <button
               key={a.id}
-              onClick={() => setActiveAgent(a.id)}
+              onClick={() => { setActiveAgent(a.id); navigate('/chat') }}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors mb-1
                 ${activeAgent === a.id
                   ? 'bg-brand-600 text-white'
