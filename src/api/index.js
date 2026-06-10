@@ -14,10 +14,6 @@ function getClient() {
   })
 }
 
-// 健康检查（用于验证 Token）
-export const checkHealth = () =>
-  getClient().get('/health')
-
 // 获取所有 Agent
 export const getAgents = () =>
   getClient().get('/v1/agents')
@@ -26,6 +22,18 @@ export const getAgents = () =>
 export const sendChat = (agentName, message, conversationId = null) =>
   getClient().post(`/v1/agents/${agentName}/chat`, { message, conversationId })
 
+// 获取该用户对此 Agent 的 LLM 配置
+export const getAgentConfig = (agentName) =>
+  getClient().get(`/v1/agents/${agentName}/config`)
+
+// 保存该用户对此 Agent 的 LLM 配置
+export const setAgentConfig = (agentName, llm_provider, llm_model) =>
+  getClient().put(`/v1/agents/${agentName}/config`, { llm_provider, llm_model })
+
+// 保存 API Key（provider 级别）
+export const saveApiKey = (agentName, provider, apiKey) =>
+  getClient().post(`/v1/agents/${agentName}/keys`, { provider, apiKey })
+
 // 获取会话列表
 export const getConversations = (agentName) =>
   getClient().get(`/v1/agents/${agentName}/conversations`)
@@ -33,10 +41,6 @@ export const getConversations = (agentName) =>
 // 执行工作流
 export const runWorkflow = (agentName, workflowGraph, inputVariables = {}) =>
   getClient().post(`/v1/agents/${agentName}/run`, { workflowGraph, inputVariables })
-
-// 保存 API Key
-export const saveApiKey = (agentName, provider, apiKey) =>
-  getClient().post(`/v1/agents/${agentName}/keys`, { provider, apiKey })
 
 // 获取记忆
 export const getMemory = (agentName) =>
