@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import useAuthStore from '../store/auth'
-import { getAgents, getAgentConfig, setAgentConfig, saveApiKey } from '../api'
+import { getAgents, getAgentConfig, setAgentConfig, getLocalKey, setLocalKey } from '../api'
 
 const PROVIDERS = [
   { id: 'openai',    label: 'OpenAI' },
@@ -18,13 +17,11 @@ const KEY_PLACEHOLDERS = {
 }
 
 export default function SettingsPage() {
-  const { activeAgent } = useAuthStore()
   const [agents, setAgents] = useState([])
   const [agentConfigs, setAgentConfigs] = useState({}) // { agentName: { llm_provider, llm_model } }
   const [savingConfig, setSavingConfig] = useState({})
   const [savedConfig, setSavedConfig]   = useState({})
   const [apiKeys, setApiKeys] = useState({})
-  const [savingKey, setSavingKey] = useState({})
   const [savedKey, setSavedKey]   = useState({})
 
   useEffect(() => {
@@ -73,20 +70,14 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleSaveKey(provider) {
+  // Key 仅写入浏览器 localStorage，不经过服务器
+  function handleSaveKey(provider) {
     const key = apiKeys[provider]?.trim()
     if (!key) return
-    setSavingKey(s => ({ ...s, [provider]: true }))
-    try {
-      await saveApiKey(activeAgent, provider, key)
-      setSavedKey(s => ({ ...s, [provider]: true }))
-      setApiKeys(k => ({ ...k, [provider]: '' }))
-      setTimeout(() => setSavedKey(s => ({ ...s, [provider]: false })), 2000)
-    } catch (err) {
-      alert(`保存失败：${err.response?.data?.error || '未知错误'}`)
-    } finally {
-      setSavingKey(s => ({ ...s, [provider]: false }))
-    }
+    setLocalKey(provider, key)
+    setSavedKey(s => ({ ...s, [provider]: true }))
+    setApiKeys(k => ({ ...k, [provider]: '' }))
+    setTimeout(() => setSavedKey(s => ({ ...s, [provider]: false })), 2000)
   }
 
   return (
@@ -150,12 +141,17 @@ export default function SettingsPage() {
       {/* ── API Keys ── */}
       <section>
         <h2 className="text-base font-semibold text-white mb-1">API Keys</h2>
-        <p className="text-xs text-gray-500 mb-4">AES-256-GCM 加密存储，按厂商统一管理</p>
+        <p className="text-xs text-gray-500 mb-4">Key 仅保存在你的浏览器本地，随请求携带、服务端透传，不会上传存储</p>
 
         <div className="space-y-3">
           {PROVIDERS.map(p => (
             <div key={p.id} className="bg-[#161b27] border border-[#2a2f3e] rounded-xl p-4">
-              <label className="block text-sm font-medium text-white mb-2">{p.label} API Key</label>
+              <label className="block text-sm font-medium text-white mb-2">
+                {p.label} API Key
+                {getLocalKey(p.id) && (
+                  <span className="ml-2 text-xs text-green-400 font-normal">本机已保存 ✓</span>
+                )}
+              </label>
               <div className="flex gap-2">
                 <input
                   type="password"
@@ -166,10 +162,10 @@ export default function SettingsPage() {
                 />
                 <button
                   onClick={() => handleSaveKey(p.id)}
-                  disabled={savingKey[p.id] || !apiKeys[p.id]?.trim()}
+                  disabled={!apiKeys[p.id]?.trim()}
                   className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors whitespace-nowrap"
                 >
-                  {savedKey[p.id] ? '✓ 已保存' : savingKey[p.id] ? '保存中...' : '保存'}
+                  {savedKey[p.id] ? '✓ 已保存' : '保存'}
                 </button>
               </div>
             </div>
