@@ -7,7 +7,7 @@ const PROVIDERS = [
 ]
 
 const MODEL_OPTIONS = {
-  openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+  openai:    ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.5'],
   anthropic: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
 }
 
