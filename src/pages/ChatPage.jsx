@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react'
 import useAuthStore from '../store/auth'
 import { listLocalConversations, saveLocalConversation, sendChat } from '../api'
 
+const EMPTY_ASSISTANT_FALLBACK = '我没有生成有效回复。你可以换个说法，或贴出你要处理的项目、日志、配置，我继续帮你看。'
+
 export default function ChatPage() {
   const { activeAgent } = useAuthStore()
   const [messages, setMessages] = useState([])
@@ -57,7 +59,7 @@ export default function ChatPage() {
 
     try {
       const res = await sendChat(activeAgent, text, convId)
-      const reply = normalizeAssistantReply(res.data.reply)
+      const reply = normalizeAssistantReply(res.data.reply) || EMPTY_ASSISTANT_FALLBACK
       const assistantMessage = {
         role: 'assistant',
         content: reply,
@@ -100,7 +102,7 @@ export default function ChatPage() {
             <p className="text-sm">开始和 {activeAgent === 'openclaw' ? 'OpenClaw 🦾' : '爱马仕 👜'} 对话</p>
           </div>
         )}
-        {messages.map((msg, i) => (
+        {messages.filter(hasVisibleMessageContent).map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`min-w-0 max-w-[86%] overflow-hidden px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] sm:max-w-[70%]
               ${msg.role === 'user'
@@ -151,12 +153,21 @@ export default function ChatPage() {
 }
 
 function normalizeMessages(messages) {
-  return messages.map(message => ({
-    ...message,
-    content: message.role === 'assistant'
-      ? normalizeAssistantReply(message.content)
-      : normalizeMessageContent(message.content),
-  }))
+  return messages
+    .filter(message => message.role !== 'assistant' || normalizeMessageContent(message.content).trim())
+    .map(message => ({
+      ...message,
+      content: message.role === 'assistant'
+        ? normalizeAssistantReply(message.content)
+        : normalizeMessageContent(message.content),
+    }))
+    .filter(message => message.role !== 'assistant' || hasVisibleMessageContent(message))
+}
+
+function hasVisibleMessageContent(message) {
+  return typeof message?.content === 'string'
+    ? message.content.trim().length > 0
+    : message?.content != null
 }
 
 function normalizeMessageContent(content) {
@@ -171,7 +182,7 @@ function normalizeMessageContent(content) {
 
 function normalizeAssistantReply(content) {
   const text = normalizeMessageContent(content).trim()
-  if (!text) return ''
+  if (!text || text === 'NO_REPLY') return EMPTY_ASSISTANT_FALLBACK
 
   const parsed = parseJsonEnvelope(text)
   if (!parsed) return text
@@ -188,7 +199,7 @@ function normalizeAssistantReply(content) {
     parsed.result?.finalAssistantRawText,
   ].find(value => typeof value === 'string' && value.trim() && value.trim() !== 'NO_REPLY')
 
-  return fallback?.trim() || '我没理解这条消息想让我处理什么，可以换个说法吗？'
+  return fallback?.trim() || EMPTY_ASSISTANT_FALLBACK
 }
 
 function parseJsonEnvelope(text) {
