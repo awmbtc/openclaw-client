@@ -27,6 +27,8 @@ const KEY_PLACEHOLDERS = {
 export default function SettingsPage() {
   const [agents, setAgents] = useState([])
   const [agentConfigs, setAgentConfigs] = useState({}) // { agentName: { llm_provider, llm_model } }
+  const [loadingAgents, setLoadingAgents] = useState(true)
+  const [agentConfigError, setAgentConfigError] = useState('')
   const [savingConfig, setSavingConfig] = useState({})
   const [savedConfig, setSavedConfig]   = useState({})
   const [apiKeys, setApiKeys] = useState({})
@@ -39,17 +41,23 @@ export default function SettingsPage() {
   }, [])
 
   async function loadAgents() {
+    setLoadingAgents(true)
+    setAgentConfigError('')
     try {
       const res = await getAgents()
-      const list = res.data.agents
-      setAgents(list)
+      const list = res.data.agents || []
       // 并行加载每个 Agent 的 LLM 配置
       const configs = await Promise.all(list.map(a => getAgentConfig(a.name)))
       const configMap = {}
       list.forEach((a, i) => { configMap[a.name] = configs[i].data })
+      setAgents(list)
       setAgentConfigs(configMap)
-    } catch {
-      // 静默失败，保持空状态
+    } catch (err) {
+      setAgents([])
+      setAgentConfigs({})
+      setAgentConfigError(err.response?.data?.error || 'Agent 配置加载失败，请稍后重试')
+    } finally {
+      setLoadingAgents(false)
     }
   }
 
@@ -131,7 +139,16 @@ export default function SettingsPage() {
         <p className="text-xs text-gray-500 mb-4">为每个 Agent 选择调用哪个大模型</p>
 
         <div className="space-y-4">
-          {agents.map(agent => {
+          {loadingAgents && <AgentConfigSkeleton />}
+
+          {!loadingAgents && agentConfigError && (
+            <div className="min-h-[88px] bg-[#161b27] border border-[#2a2f3e] rounded-xl p-4">
+              <p className="text-sm font-medium text-white">Agent 配置暂不可用</p>
+              <p className="mt-2 text-xs text-gray-500">{agentConfigError}</p>
+            </div>
+          )}
+
+          {!loadingAgents && !agentConfigError && agents.map(agent => {
             const cfg = agentConfigs[agent.name] || {}
             const models = MODEL_OPTIONS[cfg.llm_provider] || []
             return (
@@ -143,12 +160,12 @@ export default function SettingsPage() {
                   </span>
                 </div>
 
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   {/* Provider 选择 */}
                   <select
                     value={cfg.llm_provider || 'openai'}
                     onChange={e => updateConfig(agent.name, 'llm_provider', e.target.value)}
-                    className="px-3 py-2 bg-[#0f1117] border border-[#2a2f3e] rounded-lg text-sm text-white focus:outline-none focus:border-brand-500"
+                    className="w-full px-3 py-2 bg-[#0f1117] border border-[#2a2f3e] rounded-lg text-sm text-white focus:outline-none focus:border-brand-500 sm:w-auto"
                   >
                     {PROVIDERS.map(p => (
                       <option key={p.id} value={p.id}>{p.label}</option>
@@ -159,7 +176,7 @@ export default function SettingsPage() {
                   <select
                     value={cfg.llm_model || ''}
                     onChange={e => updateConfig(agent.name, 'llm_model', e.target.value)}
-                    className="flex-1 min-w-0 px-3 py-2 bg-[#0f1117] border border-[#2a2f3e] rounded-lg text-sm text-white focus:outline-none focus:border-brand-500"
+                    className="w-full min-w-0 px-3 py-2 bg-[#0f1117] border border-[#2a2f3e] rounded-lg text-sm text-white focus:outline-none focus:border-brand-500 sm:flex-1"
                   >
                     {models.map(m => (
                       <option key={m} value={m}>{m}</option>
@@ -169,7 +186,7 @@ export default function SettingsPage() {
                   <button
                     onClick={() => handleSaveConfig(agent.name)}
                     disabled={savingConfig[agent.name]}
-                    className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors whitespace-nowrap"
+                    className="w-full px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors whitespace-nowrap sm:w-auto"
                   >
                     {savedConfig[agent.name] ? '✓ 已保存' : savingConfig[agent.name] ? '保存中...' : '保存'}
                   </button>
@@ -249,5 +266,29 @@ export default function SettingsPage() {
       </section>
 
     </div>
+  )
+}
+
+function AgentConfigSkeleton() {
+  return (
+    <>
+      {[0, 1].map(index => (
+        <div
+          key={index}
+          className="min-h-[116px] bg-[#161b27] border border-[#2a2f3e] rounded-xl p-4"
+          aria-hidden="true"
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div className="h-5 w-24 rounded bg-[#232a3a] animate-pulse" />
+            <div className="h-5 w-16 rounded bg-[#0f1117] animate-pulse" />
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="h-10 w-full rounded-lg bg-[#0f1117] animate-pulse sm:w-28" />
+            <div className="h-10 w-full rounded-lg bg-[#0f1117] animate-pulse sm:flex-1" />
+            <div className="h-10 w-full rounded-lg bg-[#24365f] animate-pulse sm:w-16" />
+          </div>
+        </div>
+      ))}
+    </>
   )
 }
