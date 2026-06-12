@@ -91,18 +91,18 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col">
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-4 sm:px-6">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-600">
+          <div className="flex h-full flex-col items-center justify-center text-center text-gray-600">
             <p className="text-4xl mb-3">💬</p>
             <p className="text-sm">开始和 {activeAgent === 'openclaw' ? 'OpenClaw 🦾' : '爱马仕 👜'} 对话</p>
           </div>
         )}
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`min-w-0 max-w-[70%] overflow-hidden px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]
+            <div className={`min-w-0 max-w-[86%] overflow-hidden px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] sm:max-w-[70%]
               ${msg.role === 'user'
                 ? 'bg-brand-600 text-white rounded-br-sm'
                 : msg.isError
@@ -129,18 +129,18 @@ export default function ChatPage() {
       </div>
 
       {/* 输入框 */}
-      <form onSubmit={handleSend} className="px-6 py-4 border-t border-[#2a2f3e] bg-[#161b27]">
+      <form onSubmit={handleSend} className="border-t border-[#2a2f3e] bg-[#161b27] px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex gap-3">
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
             placeholder={`发送给 ${activeAgent === 'openclaw' ? 'OpenClaw' : '爱马仕'}...`}
-            className="flex-1 px-4 py-3 bg-[#0f1117] border border-[#2a2f3e] rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-brand-500 transition-colors text-sm"
+            className="min-w-0 flex-1 px-4 py-3 bg-[#0f1117] border border-[#2a2f3e] rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-brand-500 transition-colors text-sm"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="px-5 py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl transition-colors text-sm font-medium"
+            className="shrink-0 px-4 py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl transition-colors text-sm font-medium sm:px-5"
           >
             发送
           </button>

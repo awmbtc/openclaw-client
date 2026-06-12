@@ -73,9 +73,9 @@ export default function CanvasPage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-h-0 flex-col md:flex-row">
       {/* 画布区域 */}
-      <div className="flex-1 relative">
+      <div className="relative min-h-[18rem] flex-1">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -91,7 +91,7 @@ export default function CanvasPage() {
       </div>
 
       {/* 右侧运行面板 */}
-      <div className="w-72 flex flex-col bg-[#161b27] border-l border-[#2a2f3e] p-4 gap-4">
+      <div className="flex max-h-[42%] shrink-0 flex-col gap-4 overflow-y-auto border-t border-[#2a2f3e] bg-[#161b27] p-4 md:max-h-none md:w-72 md:border-l md:border-t-0">
         <h2 className="text-sm font-semibold text-white">运行工作流</h2>
 
         <div>
