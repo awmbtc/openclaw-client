@@ -103,17 +103,7 @@ export default function ChatPage() {
           </div>
         )}
         {messages.filter(hasVisibleMessageContent).map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`min-w-0 max-w-[86%] overflow-hidden px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] sm:max-w-[70%]
-              ${msg.role === 'user'
-                ? 'bg-brand-600 text-white rounded-br-sm'
-                : msg.isError
-                  ? 'bg-red-900/40 text-red-300 rounded-bl-sm'
-                  : 'bg-[#1e2535] text-gray-200 rounded-bl-sm'}`}
-            >
-              {msg.content}
-            </div>
-          </div>
+          <MessageItem key={i} message={msg} />
         ))}
         {loading && (
           <div className="flex justify-start">
@@ -150,6 +140,202 @@ export default function ChatPage() {
       </form>
     </div>
   )
+}
+
+function MessageItem({ message }) {
+  if (message.role === 'user') {
+    return (
+      <div className="flex justify-end">
+        <div className="min-w-0 max-w-[86%] overflow-hidden rounded-2xl rounded-br-sm bg-brand-600 px-4 py-3 text-sm leading-relaxed text-white whitespace-pre-wrap break-words [overflow-wrap:anywhere] sm:max-w-[70%]">
+          {message.content}
+        </div>
+      </div>
+    )
+  }
+
+  if (message.isError) {
+    return (
+      <div className="flex justify-start">
+        <div className="min-w-0 max-w-[86%] overflow-hidden rounded-2xl rounded-bl-sm bg-red-900/40 px-4 py-3 text-sm leading-relaxed text-red-300 whitespace-pre-wrap break-words [overflow-wrap:anywhere] sm:max-w-[70%]">
+          {message.content}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex justify-start">
+      <article className="min-w-0 w-full max-w-[52rem] rounded-xl px-1 py-1 text-[15px] leading-7 text-gray-100 sm:px-2">
+        <RichAssistantContent content={message.content} />
+      </article>
+    </div>
+  )
+}
+
+function RichAssistantContent({ content }) {
+  const { thoughts, visibleText } = extractThoughts(content)
+  const parts = parseAssistantBlocks(visibleText)
+
+  return (
+    <div className="space-y-4">
+      {thoughts.map((thought, index) => (
+        <ThoughtBlock key={`thought-${index}`} content={thought} />
+      ))}
+
+      {parts.map((part, index) => {
+        if (part.type === 'thought') {
+          return <ThoughtBlock key={index} content={part.content} />
+        }
+        if (part.type === 'code') {
+          return <CodeBlock key={index} language={part.language} code={part.content} />
+        }
+        return <TextBlock key={index} text={part.content} />
+      })}
+    </div>
+  )
+}
+
+function TextBlock({ text }) {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map(block => block.trim())
+    .filter(Boolean)
+
+  return blocks.map((block, index) => {
+    if (isListBlock(block)) {
+      return <ListBlock key={index} text={block} />
+    }
+
+    return (
+      <p key={index} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+        {renderInlineCode(block)}
+      </p>
+    )
+  })
+}
+
+function ListBlock({ text }) {
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean)
+  return (
+    <ul className="space-y-1 pl-5">
+      {lines.map((line, index) => (
+        <li key={index} className="list-disc break-words [overflow-wrap:anywhere]">
+          {renderInlineCode(line.replace(/^[-*]\s+/, ''))}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function CodeBlock({ language, code }) {
+  const [copied, setCopied] = useState(false)
+  const label = language || 'text'
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1400)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-[#2a2f3e] bg-[#0b0e14]">
+      <div className="flex items-center justify-between gap-3 border-b border-[#2a2f3e] bg-[#111722] px-3 py-2">
+        <span className="text-xs font-medium text-gray-400">{label}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="rounded-md px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-[#1e2535] hover:text-white"
+        >
+          {copied ? '已复制' : '复制'}
+        </button>
+      </div>
+      <pre className="max-h-[28rem] overflow-auto p-4 text-[13px] leading-6 text-gray-100">
+        <code>{code}</code>
+      </pre>
+    </div>
+  )
+}
+
+function ThoughtBlock({ content }) {
+  if (!content?.trim()) return null
+
+  return (
+    <details className="group rounded-lg border border-[#2a2f3e] bg-[#111722]/70 px-3 py-2">
+      <summary className="cursor-pointer select-none text-sm text-gray-400 transition-colors group-open:text-gray-200">
+        思考
+      </summary>
+      <div className="mt-3 space-y-3 border-t border-[#2a2f3e] pt-3 text-sm leading-6 text-gray-400">
+        <TextBlock text={content} />
+      </div>
+    </details>
+  )
+}
+
+function extractThoughts(content) {
+  let visibleText = normalizeMessageContent(content)
+  const thoughts = []
+  const thoughtPattern = /<(think|thinking|thought)>\s*([\s\S]*?)\s*<\/\1>/gi
+
+  visibleText = visibleText.replace(thoughtPattern, (_, _tag, thought) => {
+    if (thought?.trim()) thoughts.push(thought.trim())
+    return '\n'
+  })
+
+  return { thoughts, visibleText: visibleText.trim() }
+}
+
+function parseAssistantBlocks(text) {
+  const blocks = []
+  const fencePattern = /```([^\n`]*)\n?([\s\S]*?)```/g
+  let lastIndex = 0
+  let match
+
+  while ((match = fencePattern.exec(text)) !== null) {
+    const before = text.slice(lastIndex, match.index).trim()
+    if (before) blocks.push({ type: 'text', content: before })
+
+    const language = match[1]?.trim()
+    const content = match[2]?.replace(/\n$/, '') || ''
+    blocks.push({
+      type: isThoughtLanguage(language) ? 'thought' : 'code',
+      language,
+      content,
+    })
+    lastIndex = fencePattern.lastIndex
+  }
+
+  const after = text.slice(lastIndex).trim()
+  if (after) blocks.push({ type: 'text', content: after })
+
+  return blocks.length ? blocks : [{ type: 'text', content: text }]
+}
+
+function isThoughtLanguage(language) {
+  return ['think', 'thinking', 'thought', 'reasoning', '思考'].includes((language || '').toLowerCase())
+}
+
+function isListBlock(text) {
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean)
+  return lines.length > 1 && lines.every(line => /^[-*]\s+/.test(line))
+}
+
+function renderInlineCode(text) {
+  const parts = text.split(/(`[^`]+`)/g)
+  return parts.map((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <code key={index} className="rounded-md bg-[#e8eaef] px-1.5 py-0.5 font-mono text-[0.92em] text-[#1f2328]">
+          {part.slice(1, -1)}
+        </code>
+      )
+    }
+
+    return part
+  })
 }
 
 function normalizeMessages(messages) {
