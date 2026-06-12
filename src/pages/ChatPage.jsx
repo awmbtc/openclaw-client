@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import useAuthStore from '../store/auth'
-import { sendChat } from '../api'
+import { listLocalConversations, saveLocalConversation, sendChat } from '../api'
 
 export default function ChatPage() {
   const { activeAgent } = useAuthStore()
@@ -8,12 +8,36 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [convId, setConvId] = useState(null)
+  const [convCreatedAt, setConvCreatedAt] = useState(null)
   const bottomRef = useRef(null)
 
-  // 切换 Agent 时清空当前对话
+  // 切换 Agent 时加载本机最近会话；本地数据不包含 API Key
   useEffect(() => {
-    setMessages([])
-    setConvId(null)
+    let cancelled = false
+
+    async function loadLocalConversation() {
+      try {
+        const conversations = await listLocalConversations(activeAgent)
+        if (cancelled) return
+
+        const latest = conversations[0]
+        setMessages(normalizeMessages(latest?.messages || []))
+        setConvId(latest?.id || null)
+        setConvCreatedAt(latest?.createdAt || null)
+      } catch {
+        if (!cancelled) {
+          setMessages([])
+          setConvId(null)
+          setConvCreatedAt(null)
+        }
+      }
+    }
+
+    loadLocalConversation()
+
+    return () => {
+      cancelled = true
+    }
   }, [activeAgent])
 
   useEffect(() => {
@@ -26,13 +50,35 @@ export default function ChatPage() {
     if (!text || loading) return
 
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: text }])
+    const userMessage = { role: 'user', content: text, createdAt: new Date().toISOString() }
+    const nextUserMessages = [...messages, userMessage]
+    setMessages(nextUserMessages)
     setLoading(true)
 
     try {
       const res = await sendChat(activeAgent, text, convId)
-      setConvId(res.data.conversationId)
-      setMessages(prev => [...prev, { role: 'assistant', content: res.data.reply }])
+      const reply = normalizeAssistantReply(res.data.reply)
+      const assistantMessage = {
+        role: 'assistant',
+        content: reply,
+        createdAt: new Date().toISOString(),
+      }
+      const nextMessages = [...nextUserMessages, assistantMessage]
+      const nextConvId = res.data.conversationId || convId || `local_${Date.now()}`
+      const now = new Date().toISOString()
+      const nextCreatedAt = convCreatedAt || now
+
+      setConvId(nextConvId)
+      setConvCreatedAt(nextCreatedAt)
+      setMessages(nextMessages)
+      await saveLocalConversation({
+        id: nextConvId,
+        agentName: activeAgent,
+        title: nextMessages.find(message => message.role === 'user')?.content?.slice(0, 48) || '新会话',
+        messages: nextMessages,
+        createdAt: nextCreatedAt,
+        updatedAt: now,
+      })
     } catch (err) {
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -56,7 +102,7 @@ export default function ChatPage() {
         )}
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
+            <div className={`min-w-0 max-w-[70%] overflow-hidden px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]
               ${msg.role === 'user'
                 ? 'bg-brand-600 text-white rounded-br-sm'
                 : msg.isError
@@ -102,4 +148,111 @@ export default function ChatPage() {
       </form>
     </div>
   )
+}
+
+function normalizeMessages(messages) {
+  return messages.map(message => ({
+    ...message,
+    content: message.role === 'assistant'
+      ? normalizeAssistantReply(message.content)
+      : normalizeMessageContent(message.content),
+  }))
+}
+
+function normalizeMessageContent(content) {
+  if (typeof content === 'string') return content
+  if (content == null) return ''
+  try {
+    return JSON.stringify(content, null, 2)
+  } catch {
+    return String(content)
+  }
+}
+
+function normalizeAssistantReply(content) {
+  const text = normalizeMessageContent(content).trim()
+  if (!text) return ''
+
+  const parsed = parseJsonEnvelope(text)
+  if (!parsed) return text
+
+  const payloadText = extractPayloadText(parsed)
+  if (payloadText) return payloadText
+
+  const fallback = [
+    parsed.finalAssistantVisibleText,
+    parsed.finalAssistantRawText,
+    parsed.meta?.finalAssistantVisibleText,
+    parsed.meta?.finalAssistantRawText,
+    parsed.result?.finalAssistantVisibleText,
+    parsed.result?.finalAssistantRawText,
+  ].find(value => typeof value === 'string' && value.trim() && value.trim() !== 'NO_REPLY')
+
+  return fallback?.trim() || '我没理解这条消息想让我处理什么，可以换个说法吗？'
+}
+
+function parseJsonEnvelope(text) {
+  const candidate = extractJsonObject(text)
+  if (!candidate) return null
+
+  try {
+    const parsed = JSON.parse(candidate)
+    if (Array.isArray(parsed.payloads) || Array.isArray(parsed.result?.payloads) || parsed.meta) {
+      return parsed
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function extractJsonObject(text) {
+  const start = text.indexOf('{')
+  if (start < 0) return ''
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+    } else if (char === '{') {
+      depth += 1
+    } else if (char === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return text.slice(start, i + 1)
+      }
+    }
+  }
+
+  return text.slice(start)
+}
+
+function extractPayloadText(parsed) {
+  const payloads = Array.isArray(parsed.payloads)
+    ? parsed.payloads
+    : parsed.result?.payloads
+
+  if (!Array.isArray(payloads)) return ''
+
+  return payloads
+    .map(payload => payload?.text)
+    .filter(value => typeof value === 'string' && value.trim())
+    .join('\n\n')
+    .trim()
 }

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { getAgents, getAgentConfig, setAgentConfig, getLocalKey, setLocalKey } from '../api'
+import {
+  downloadLocalBackupSnapshot,
+  getAgents,
+  getAgentConfig,
+  getLocalKey,
+  importLocalBackupSnapshot,
+  setAgentConfig,
+  setLocalKey,
+} from '../api'
 
 const PROVIDERS = [
   { id: 'openai',    label: 'OpenAI' },
@@ -23,6 +31,8 @@ export default function SettingsPage() {
   const [savedConfig, setSavedConfig]   = useState({})
   const [apiKeys, setApiKeys] = useState({})
   const [savedKey, setSavedKey]   = useState({})
+  const [snapshotStatus, setSnapshotStatus] = useState('')
+  const [snapshotBusy, setSnapshotBusy] = useState(false)
 
   useEffect(() => {
     loadAgents()
@@ -78,6 +88,38 @@ export default function SettingsPage() {
     setSavedKey(s => ({ ...s, [provider]: true }))
     setApiKeys(k => ({ ...k, [provider]: '' }))
     setTimeout(() => setSavedKey(s => ({ ...s, [provider]: false })), 2000)
+  }
+
+  async function handleExportSnapshot() {
+    setSnapshotBusy(true)
+    setSnapshotStatus('')
+    try {
+      const snapshot = await downloadLocalBackupSnapshot()
+      setSnapshotStatus(`已导出本地快照：${snapshot.payload.conversations.length} 个会话`)
+    } catch {
+      setSnapshotStatus('导出失败，请稍后重试')
+    } finally {
+      setSnapshotBusy(false)
+    }
+  }
+
+  async function handleImportSnapshot(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setSnapshotBusy(true)
+    setSnapshotStatus('')
+    try {
+      const text = await file.text()
+      const snapshot = JSON.parse(text)
+      const result = await importLocalBackupSnapshot(snapshot)
+      setSnapshotStatus(`已导入 ${result.importedConversationIds.length} 个新会话`)
+    } catch {
+      setSnapshotStatus('导入失败：请选择有效的 OpenClaw 快照 JSON')
+    } finally {
+      event.target.value = ''
+      setSnapshotBusy(false)
+    }
   }
 
   return (
@@ -170,6 +212,39 @@ export default function SettingsPage() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── 本地快照 ── */}
+      <section>
+        <h2 className="text-base font-semibold text-white mb-1">本地快照</h2>
+        <p className="text-xs text-gray-500 mb-4">导出或导入本机数据；导入会创建新会话，不覆盖现有内容</p>
+
+        <div className="bg-[#161b27] border border-[#2a2f3e] rounded-xl p-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleExportSnapshot}
+              disabled={snapshotBusy}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors"
+            >
+              导出 JSON
+            </button>
+
+            <label className="px-4 py-2 bg-[#0f1117] hover:bg-[#1e2535] border border-[#2a2f3e] text-white text-sm rounded-lg transition-colors cursor-pointer">
+              导入 JSON
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={handleImportSnapshot}
+                disabled={snapshotBusy}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {snapshotStatus && (
+            <p className="text-xs text-gray-400 mt-3">{snapshotStatus}</p>
+          )}
         </div>
       </section>
 
